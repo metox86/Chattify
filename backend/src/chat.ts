@@ -1,7 +1,9 @@
 import express from 'express';
+import { Server } from 'socket.io';
 import { getDb } from './db';
 import { requireAuth } from './auth';
 
+export default function createChatRouter(io: Server) {
 const router = express.Router();
 
 router.use(requireAuth);
@@ -151,4 +153,124 @@ router.post('/friend-accept', async (req: express.Request, res: express.Response
   }
 });
 
-export default router;
+router.post('/groups', async (req: express.Request, res: express.Response): Promise<void> => {
+  const db = getDb();
+  const currentUserId = (req as any).userId;
+  const { name, members } = req.body; // members is an array of user IDs
+  
+  try {
+    const result = await db.run(
+      'INSERT INTO groups (name, creator_id) VALUES (?, ?)',
+      [name, currentUserId]
+    );
+    
+    const groupId = result.lastID;
+    
+    // Add creator to group
+    await db.run(
+      'INSERT INTO group_members (group_id, user_id) VALUES (?, ?)',
+      [groupId, currentUserId]
+    );
+    
+    // Add other members if provided
+    const allMemberIds: number[] = [];
+    if (Array.isArray(members)) {
+      for (const memberId of members) {
+        if (memberId !== currentUserId) {
+          await db.run(
+            'INSERT OR IGNORE INTO group_members (group_id, user_id) VALUES (?, ?)',
+            [groupId, memberId]
+          );
+          allMemberIds.push(memberId);
+        }
+      }
+    }
+    
+    const group = await db.get('SELECT * FROM groups WHERE id = ?', groupId);
+
+    // Notify all new members in real-time via their personal rooms
+    // (same pattern as DM: emit to userId.toString())
+    for (const memberId of allMemberIds) {
+      io.to(memberId.toString()).emit('you-added-to-group', group);
+    }
+
+    res.json(group);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error creating group' });
+  }
+});
+
+router.get('/groups', async (req: express.Request, res: express.Response): Promise<void> => {
+  const db = getDb();
+  const currentUserId = (req as any).userId;
+  
+  try {
+    const groups = await db.all(
+      `SELECT g.id, g.name, g.creator_id, g.created_at 
+       FROM groups g
+       JOIN group_members gm ON g.id = gm.group_id
+       WHERE gm.user_id = ?`,
+      [currentUserId]
+    );
+    
+    // Fetch last message for each group
+    for (let group of groups) {
+      const lastMessage = await db.get(
+        `SELECT gm.content, gm.created_at, gm.sender_id, u.username as sender_username 
+         FROM group_messages gm 
+         JOIN users u ON gm.sender_id = u.id
+         WHERE gm.group_id = ? 
+         ORDER BY gm.created_at DESC LIMIT 1`,
+        [group.id]
+      );
+      group.lastMessage = lastMessage;
+    }
+    res.json(groups);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error getting groups' });
+  }
+});
+
+router.get('/groups/:groupId/members', async (req: express.Request, res: express.Response): Promise<void> => {
+  const db = getDb();
+  const groupId = req.params.groupId;
+  
+  try {
+    const members = await db.all(
+      `SELECT u.id, u.username, gm.joined_at 
+       FROM users u
+       JOIN group_members gm ON u.id = gm.user_id
+       WHERE gm.group_id = ?`,
+      [groupId]
+    );
+    res.json(members);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error getting group members' });
+  }
+});
+
+router.get('/groups/:groupId/messages', async (req: express.Request, res: express.Response): Promise<void> => {
+  const db = getDb();
+  const groupId = req.params.groupId;
+  
+  try {
+    const messages = await db.all(
+      `SELECT gm.*, u.username as sender_username 
+       FROM group_messages gm
+       JOIN users u ON gm.sender_id = u.id
+       WHERE gm.group_id = ? 
+       ORDER BY gm.created_at ASC`,
+      [groupId]
+    );
+    res.json(messages);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error getting group messages' });
+  }
+});
+
+  return router;
+} // end createChatRouter

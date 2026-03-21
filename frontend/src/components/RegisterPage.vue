@@ -136,6 +136,25 @@ const handleRegister = async () => {
     padding: 28px 20px;
     border-radius: 16px;
   }
+
+  .card-header h2 {
+    font-size: 1.6rem;
+  }
+
+  .auth-form {
+    gap: 16px;
+  }
+}
+
+@media (max-width: 360px) {
+  .glass-card {
+    padding: 20px 14px;
+    border-radius: 12px;
+  }
+
+  .card-header h2 {
+    font-size: 1.4rem;
+  }
 }
 
 .card-header {

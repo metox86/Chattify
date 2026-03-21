@@ -7,9 +7,14 @@
           <div class="avatar">{{ currentUser[0]?.toUpperCase() }}</div>
           <span class="username">{{ currentUser }}</span>
         </div>
-        <button class="logout-btn" @click="handleLogout" title="Log Out">
-          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-        </button>
+        <div class="header-right-actions">
+          <button class="icon-btn" @click="showGroupModal = true" title="Create Group">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path><line x1="12" y1="11" x2="12" y2="17"></line><line x1="9" y1="14" x2="15" y2="14"></line></svg>
+          </button>
+          <button class="logout-btn" @click="handleLogout" title="Log Out">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          </button>
+        </div>
       </div>
       
       <div class="search-bar">
@@ -20,7 +25,7 @@
       </div>
 
       <ConversationList 
-        :conversations="conversations" 
+        :conversations="combinedConversations" 
         :activeConversationId="activeConversationId ?? undefined"
         @select="selectConversation"
       />
@@ -28,8 +33,17 @@
 
     <!-- Chat area: hidden on mobile when no chat is open -->
     <div class="chat-area" :class="{ 'chat-area--hidden': isMobile && !activeConversationId }">
+      <GroupChatWindow
+        v-if="activeConversationId?.startsWith('g')"
+        :group="activeGroup"
+        :currentUser="(currentUserId as number)"
+        @send-group-message="sendGroupMessage"
+        @typing="sendGroupTyping"
+        @back="goBack"
+        :showBack="isMobile"
+      />
       <ChatWindow 
-        v-if="activeConversationId" 
+        v-else-if="activeConversationId?.startsWith('u')" 
         :conversation="activeConversation"
         :currentUser="(currentUserId as number)"
         :refreshFriendshipTrigger="refreshFriendshipTrigger"
@@ -54,6 +68,12 @@
       @close="showSearchModal = false"
       @start-chat="startNewChat"
     />
+
+    <CreateGroupModal
+      v-if="showGroupModal"
+      @close="showGroupModal = false"
+      @group-created="onGroupCreated"
+    />
   </div>
 </template>
 
@@ -63,15 +83,19 @@ import { useRouter, useRoute } from 'vue-router';
 import { io } from 'socket.io-client';
 import ConversationList from './sub_components/ConversationList.vue';
 import ChatWindow from './sub_components/ChatWindow.vue';
+import GroupChatWindow from './sub_components/GroupChatWindow.vue';
 import UserSearch from './sub_components/UserSearch.vue';
+import CreateGroupModal from './sub_components/CreateGroupModal.vue';
 
 const router = useRouter();
 const route = useRoute();
 const currentUser = ref<string>('');
 const currentUserId = ref<number | null>(null);
 const conversations = ref<any[]>([]);
-const activeConversationId = ref<number | null>(null);
+const groups = ref<any[]>([]);
+const activeConversationId = ref<string | null>(null);
 const showSearchModal = ref<boolean>(false);
+const showGroupModal = ref<boolean>(false);
 const socket = ref<any>(null);
 const refreshFriendshipTrigger = ref<number>(0);
 
@@ -80,8 +104,19 @@ const isMobile = ref<boolean>(window.innerWidth <= 768);
 const onResize = () => { isMobile.value = window.innerWidth <= 768; };
 window.addEventListener('resize', onResize);
 
+const combinedConversations = computed(() => {
+  return [
+    ...conversations.value.map(c => ({...c, isGroup: false})),
+    ...groups.value.map(g => ({...g, isGroup: true, username: g.name }))
+  ];
+});
+
 const activeConversation = computed(() => {
-  return conversations.value.find(c => c.id === activeConversationId.value);
+  return conversations.value.find(c => 'u' + c.id === activeConversationId.value);
+});
+
+const activeGroup = computed(() => {
+  return groups.value.find(g => 'g' + g.id === activeConversationId.value);
 });
 
 onMounted(async () => {
@@ -94,9 +129,11 @@ onMounted(async () => {
     localStorage.setItem('chat_user', JSON.stringify(data));
     
     initSocket();
-    await fetchConversations();
+    await Promise.all([fetchConversations(), fetchGroups()]);
     if (route.params.chatId) {
-      loadConversation(route.params.chatId);
+      loadConversation('u' + route.params.chatId);
+    } else if (route.params.groupId) {
+      loadConversation('g' + route.params.groupId);
     }
   } catch(e: any) {
     localStorage.removeItem('chat_user');
@@ -120,6 +157,31 @@ const initSocket = () => {
       conv.lastMessage = msg;
     } else {
       fetchConversations();
+    }
+  });
+
+  // When this user is added to a new group by someone else → refresh groups list
+  socket.value.on('you-added-to-group', (_group: any) => {
+    fetchGroups();
+  });
+
+  socket.value.on('group-message-received', (msg: any) => {
+    const idx = groups.value.findIndex(g => g.id === msg.group_id);
+    if (idx !== -1) {
+      const group = groups.value[idx];
+      // Spread into new arrays so Vue 3 always detects the change
+      const updatedGroup = {
+        ...group,
+        messages: [...(group.messages || []), msg],
+        lastMessage: msg,
+      };
+      groups.value = [
+        ...groups.value.slice(0, idx),
+        updatedGroup,
+        ...groups.value.slice(idx + 1),
+      ];
+    } else {
+      fetchGroups();
     }
   });
 
@@ -161,6 +223,13 @@ const fetchConversations = async () => {
   }
 };
 
+const fetchGroups = async () => {
+  const res = await fetch('http://localhost:3000/api/chat/groups', { credentials: 'include' });
+  if (res.ok) {
+    groups.value = await res.json();
+  }
+};
+
 const fetchMessages = async (userId: number) => {
   const res = await fetch(`http://localhost:3000/api/chat/messages/${userId}`, { credentials: 'include' });
   if (res.ok) {
@@ -172,28 +241,55 @@ const fetchMessages = async (userId: number) => {
   }
 };
 
-const loadConversation = async (idStr: any) => {
-  if (!idStr) {
+const fetchGroupMessages = async (groupId: number) => {
+  const res = await fetch(`http://localhost:3000/api/chat/groups/${groupId}/messages`, { credentials: 'include' });
+  if (res.ok) {
+    const msgs = await res.json();
+    const group = groups.value.find(g => g.id === groupId);
+    if (group) {
+      group.messages = msgs;
+    }
+  }
+};
+
+const loadConversation = async (fullIdStr: any) => {
+  if (!fullIdStr) {
     activeConversationId.value = null;
     return;
   }
-  const idInt = parseInt(idStr, 10);
-  const id = isNaN(idInt) ? idStr : idInt;
   
-  activeConversationId.value = id;
-  const conv = conversations.value.find(c => c.id === id);
-  if (conv && !conv.messages) {
-    await fetchMessages(id);
+  activeConversationId.value = fullIdStr;
+  const isGroup = fullIdStr.startsWith('g');
+  const id = parseInt(fullIdStr.substring(1), 10);
+  
+  if (isGroup) {
+    const group = groups.value.find(g => g.id === id);
+    if (group && !group.messages) {
+      await fetchGroupMessages(id);
+    }
+  } else {
+    const conv = conversations.value.find(c => c.id === id);
+    if (conv && !conv.messages) {
+      await fetchMessages(id);
+    }
   }
 };
 
 watch(() => route.params.chatId, (newId: any) => {
-  loadConversation(newId);
+  if (newId) loadConversation('u' + newId);
 });
 
-const selectConversation = (id: number) => {
+watch(() => route.params.groupId, (newId: any) => {
+  if (newId) loadConversation('g' + newId);
+});
+
+const selectConversation = (conv: any) => {
   if (currentUserId.value) {
-    router.push(`/${currentUserId.value}/chats/${id}`);
+    if (conv.isGroup) {
+      router.push(`/${currentUserId.value}/groups/${conv.id}`);
+    } else {
+      router.push(`/${currentUserId.value}/chats/${conv.id}`);
+    }
   }
 };
 
@@ -213,12 +309,23 @@ const startNewChat = (user: any) => {
       lastMessage: null
     });
   }
-  selectConversation(user.id);
+  selectConversation({ id: user.id, isGroup: false });
+};
+
+const onGroupCreated = (group: any) => {
+  showGroupModal.value = false;
+  groups.value.unshift({
+    ...group,
+    messages: [],
+    lastMessage: null
+  });
+  selectConversation({ id: group.id, isGroup: true });
 };
 
 const sendMessage = (content: string) => {
-  if (!socket.value || !activeConversationId.value) return;
-  socket.value.emit('send-message', { receiverId: activeConversationId.value, content }, (res: any) => {
+  if (!socket.value || !activeConversationId.value || !activeConversation.value) return;
+  const receiverId = parseInt(activeConversationId.value.substring(1), 10);
+  socket.value.emit('send-message', { receiverId, content }, (res: any) => {
     if (res.success) {
       const conv = activeConversation.value;
       if (!conv.messages) conv.messages = [];
@@ -228,9 +335,38 @@ const sendMessage = (content: string) => {
   });
 };
 
+const sendGroupMessage = (content: string) => {
+  if (!socket.value || !activeConversationId.value || !activeGroup.value) return;
+  const groupId = parseInt(activeConversationId.value.substring(1), 10);
+  socket.value.emit('send-group-message', { groupId, content }, (res: any) => {
+    if (res.success) {
+      const idx = groups.value.findIndex(g => g.id === groupId);
+      if (idx !== -1) {
+        const group = groups.value[idx];
+        // Spread into new arrays so Vue 3 always detects the change
+        const updatedGroup = {
+          ...group,
+          messages: [...(group.messages || []), res.message],
+          lastMessage: res.message,
+        };
+        groups.value = [
+          ...groups.value.slice(0, idx),
+          updatedGroup,
+          ...groups.value.slice(idx + 1),
+        ];
+      }
+    }
+  });
+};
+
 const sendTyping = () => {
   if (!socket.value || !activeConversationId.value) return;
-  socket.value.emit('typing', { receiverId: activeConversationId.value });
+  const receiverId = parseInt(activeConversationId.value.substring(1), 10);
+  socket.value.emit('typing', { receiverId });
+};
+
+const sendGroupTyping = () => {
+  // Typing indicators for groups can be implemented similarly if backend supports it
 };
 
 const onFriendRequestSent = (targetId: number) => {
@@ -276,6 +412,8 @@ const handleLogout = async () => {
 .sidebar-header {
   height: 60px;
   padding: 0 16px;
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
   background: rgba(255, 255, 255, 0.02);
   display: flex;
   justify-content: space-between;
@@ -313,7 +451,13 @@ const handleLogout = async () => {
   white-space: nowrap;
 }
 
-.logout-btn {
+.header-right-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logout-btn, .icon-btn {
   background: transparent;
   color: #94a3b8;
   border: none;
@@ -451,6 +595,30 @@ const handleLogout = async () => {
 
   .empty-state {
     display: none;
+  }
+}
+
+/* ── Small Mobile (≤480px) ───────────────── */
+@media (max-width: 480px) {
+  .sidebar-header {
+    height: 54px;
+    padding: 0 12px;
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+
+  .search-bar {
+    padding: 8px 12px;
+  }
+
+  .avatar {
+    width: 30px;
+    height: 30px;
+    font-size: 0.9rem;
+  }
+
+  .username {
+    font-size: 0.85rem;
   }
 }
 </style>

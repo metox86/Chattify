@@ -1,54 +1,43 @@
 <template>
-  <div class="chat-window">
+  <div class="chat-window group-chat-window">
     <div class="chat-header">
       <div class="contact-info">
-        <!-- Mobile back button -->
         <button v-if="props.showBack" class="back-btn" @click="emit('back')" title="Back">
           <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
         </button>
-        <div class="avatar">{{ conversation.username[0]?.toUpperCase() }}</div>
+        <div class="avatar group-avatar">
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        </div>
         <div class="contact-text">
-          <span class="username">{{ conversation.username }}</span>
-          <span class="status" v-if="conversation.online">Online</span>
-          <span class="status offline" v-else>Offline</span>
+          <span class="username">{{ group.name }}</span>
+          <span class="status">Group Chat</span>
         </div>
       </div>
       <div class="header-actions">
-        <button class="icon-btn" :disabled="friendshipStatus !== 'accepted'" title="Voice Call">
+        <!-- Voice/Video buttons are NOT disabled in group chat based on friendship -->
+        <button class="icon-btn" title="Voice Call">
           <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
         </button>
-        <button class="icon-btn" :disabled="friendshipStatus !== 'accepted'" title="Video Call">
+        <button class="icon-btn" title="Video Call">
           <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" class="video-icon"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
         </button>
       </div>
     </div>
 
-    <div v-if="friendshipStatus === 'none'" class="friendship-banner">
-      <p>You are not friends with {{ conversation.username }}. Features are limited.</p>
-      <button class="action-btn" @click="sendFriendRequest">Add Friend</button>
-    </div>
-    <div v-else-if="friendshipStatus === 'pending'" class="friendship-banner pending">
-      <p>Friend request sent. Waiting for {{ conversation.username }} to accept.</p>
-    </div>
-    <div v-else-if="friendshipStatus === 'received'" class="friendship-banner action-required">
-      <p>{{ conversation.username }} wants to be your friend.</p>
-      <button class="action-btn success" @click="acceptFriendRequest">Accept Request</button>
-    </div>
-
     <div class="messages-container" ref="messagesContainer">
-      <div v-if="!conversation.messages || conversation.messages.length === 0" class="no-messages">
-        <p>No messages yet. Say hi!</p>
+      <div v-if="!group.messages || group.messages.length === 0" class="no-messages">
+        <p>No messages yet. Say hi to the group!</p>
       </div>
       
       <div v-else class="message-list">
-        <!-- Add a date separator logic if needed, but for now just map messages -->
         <div 
-          v-for="(msg, index) in conversation.messages" 
+          v-for="(msg, index) in group.messages" 
           :key="msg.id || index"
           class="message-wrapper"
           :class="['message-wrapper', msg.sender_id === currentUser ? 'sent' : 'received']"
         >
           <div class="message-bubble">
+            <span class="sender-name" v-if="msg.sender_id !== currentUser">{{ msg.sender_username }}</span>
             <span class="text">{{ msg.content }}</span>
             <span class="time">{{ formatTime(msg.created_at) }}</span>
           </div>
@@ -57,17 +46,15 @@
     </div>
 
     <div class="chat-input-area">
-      <div v-if="conversation.typing" class="typing-indicator">
-        {{ conversation.username }} is typing...
-      </div>
+      <!-- Typing indicator logic omitted for group for simplicity -- or can be added -->
       <form @submit.prevent="submitMessage" class="input-form">
-        <button type="button" class="attach-btn" :disabled="friendshipStatus !== 'accepted'" title="Attach File">
+        <button type="button" class="attach-btn" title="Attach File">
           <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
         </button>
         <input 
           type="text" 
           v-model="newMessage" 
-          placeholder="Type a message..." 
+          placeholder="Type a message to the group..." 
           @input="onInput"
         />
         <button type="submit" class="send-btn" :disabled="!newMessage.trim()">
@@ -82,18 +69,15 @@
 import { ref, watch, nextTick, onMounted } from 'vue';
 
 const props = defineProps<{
-  conversation: any;
+  group: any;
   currentUser: number;
-  refreshFriendshipTrigger?: number;
   showBack?: boolean;
 }>();
 
-const emit = defineEmits(['send-message', 'typing', 'friend-request-sent', 'friend-accept-sent', 'back']);
+const emit = defineEmits(['send-group-message', 'typing', 'back']);
 
 const newMessage = ref<string>('');
 const messagesContainer = ref<HTMLElement | null>(null);
-const friendshipStatus = ref<string>('none');
-let typingTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const scrollToBottom = async () => {
   await nextTick();
@@ -102,57 +86,17 @@ const scrollToBottom = async () => {
   }
 };
 
-const fetchFriendship = async () => {
-  if (!props.conversation.id) return;
-  const res = await fetch(`http://localhost:3000/api/chat/friendship/${props.conversation.id}`, { credentials: 'include' });
-  if (res.ok) {
-    const data = await res.json();
-    friendshipStatus.value = data.status;
-  }
-};
-
-watch(() => props.conversation.messages, () => {
+watch(() => props.group.messages, () => {
   scrollToBottom();
 }, { deep: true, flush: 'post' });
 
-watch(() => props.conversation.id, () => {
+watch(() => props.group?.id, () => {
   scrollToBottom();
-  fetchFriendship();
 }, { immediate: true, flush: 'post' });
-
-watch(() => props.refreshFriendshipTrigger, () => {
-  fetchFriendship();
-});
 
 onMounted(() => {
   scrollToBottom();
 });
-
-const sendFriendRequest = async () => {
-  const res = await fetch('http://localhost:3000/api/chat/friend-request', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({ targetId: props.conversation.id })
-  });
-  if (res.ok) {
-    friendshipStatus.value = 'pending';
-    emit('friend-request-sent', props.conversation.id);
-  }
-};
-
-const acceptFriendRequest = async () => {
-  const res = await fetch('http://localhost:3000/api/chat/friend-accept', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({ targetId: props.conversation.id })
-  });
-  if (res.ok) {
-    friendshipStatus.value = 'accepted';
-    emit('friend-accept-sent', props.conversation.id);
-  }
-};
 
 const formatTime = (isoString: string) => {
   if (!isoString) return '';
@@ -161,19 +105,12 @@ const formatTime = (isoString: string) => {
 };
 
 const onInput = () => {
-  if (!typingTimeout) {
-    emit('typing');
-  } else {
-    clearTimeout(typingTimeout);
-  }
-  typingTimeout = setTimeout(() => {
-    typingTimeout = null;
-  }, 2000);
+  emit('typing');
 };
 
 const submitMessage = () => {
   if (!newMessage.value.trim()) return;
-  emit('send-message', newMessage.value.trim());
+  emit('send-group-message', newMessage.value.trim());
   newMessage.value = '';
 };
 </script>
@@ -218,66 +155,9 @@ const submitMessage = () => {
   transition: all 0.2s;
 }
 
-.icon-btn:hover:not(:disabled), .attach-btn:hover:not(:disabled) {
+.icon-btn:hover, .attach-btn:hover {
   background: rgba(255, 255, 255, 0.05);
   color: #4facfe;
-}
-
-.icon-btn:disabled, .attach-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.friendship-banner {
-  background: rgba(255, 255, 255, 0.03);
-  padding: 12px 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.friendship-banner p {
-  margin: 0;
-  font-size: 0.9rem;
-  color: #94a3b8;
-}
-
-.friendship-banner.pending {
-  justify-content: center;
-}
-
-.friendship-banner.action-required {
-  background: rgba(79, 172, 254, 0.1);
-}
-
-.friendship-banner.action-required p {
-  color: #e2e8f0;
-  font-weight: 500;
-}
-
-.action-btn {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-  border: none;
-  padding: 6px 16px;
-  border-radius: 12px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.action-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.action-btn.success {
-  background: #22c55e;
-  font-weight: 600;
-}
-
-.action-btn.success:hover {
-  background: #16a34a;
 }
 
 .contact-info {
@@ -298,6 +178,10 @@ const submitMessage = () => {
   color: #fff;
 }
 
+.group-avatar {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
 .contact-text {
   display: flex;
   flex-direction: column;
@@ -312,10 +196,6 @@ const submitMessage = () => {
 .status {
   font-size: 0.8rem;
   color: #22c55e;
-}
-
-.status.offline {
-  color: #64748b;
 }
 
 .messages-container {
@@ -372,6 +252,13 @@ const submitMessage = () => {
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
+.sender-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #10b981;
+  margin-bottom: 4px;
+}
+
 .message-wrapper.sent .message-bubble {
   background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
   color: white;
@@ -403,15 +290,6 @@ const submitMessage = () => {
   background: rgba(0, 0, 0, 0.2);
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   position: relative;
-}
-
-.typing-indicator {
-  position: absolute;
-  top: -25px;
-  left: 30px;
-  font-size: 0.8rem;
-  color: #4facfe;
-  font-style: italic;
 }
 
 .input-form {
@@ -466,7 +344,6 @@ input:focus {
   margin-top: 2px;
 }
 
-/* ── Back button (mobile) ─────────── */
 .back-btn {
   background: transparent;
   border: none;
@@ -486,7 +363,6 @@ input:focus {
   color: #4facfe;
 }
 
-/* ── Mobile (≤768px) ─────────────────── */
 @media (max-width: 768px) {
   .chat-header {
     padding: 0 12px;
@@ -507,16 +383,8 @@ input:focus {
   input {
     padding: 12px 16px;
   }
-
-  .friendship-banner {
-    padding: 10px 12px;
-    flex-direction: column;
-    gap: 8px;
-    text-align: center;
-  }
 }
 
-/* ── Small Mobile (≤480px) ───────────── */
 @media (max-width: 480px) {
   .chat-header {
     height: 54px;
@@ -558,16 +426,6 @@ input:focus {
   .send-btn {
     width: 42px;
     height: 42px;
-  }
-
-  .friendship-banner {
-    padding: 8px 10px;
-  }
-
-  .action-btn {
-    width: 100%;
-    text-align: center;
-    padding: 8px 16px;
   }
 }
 </style>

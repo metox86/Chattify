@@ -7,7 +7,7 @@ import { Server } from 'socket.io';
 import { parse as parseCookie } from 'cookie';
 import jwt from 'jsonwebtoken';
 import authRoutes from './auth';
-import chatRoutes from './chat';
+import createChatRouter from './chat';
 import { initDb, getDb } from './db';
 
 dotenv.config();
@@ -29,7 +29,7 @@ app.use(cookieParser());
 
 // Routes
 app.use('/', authRoutes);
-app.use('/api/chat', chatRoutes);
+app.use('/api/chat', createChatRouter(io));
 
 // Socket.io Auth
 io.use((socket, next) => {
@@ -50,12 +50,14 @@ io.use((socket, next) => {
   }
 });
 
-io.on('connection', (socket) => {
+io.on('connection', async (socket) => {
   const userId = (socket as any).userId;
   console.log(`User ${userId} connected`);
   
   // Join user's personal room for direct messages
   socket.join(userId.toString());
+
+  // (Group rooms are no longer used — messages go to personal rooms like DM)
 
   // Broadcast online status
   socket.broadcast.emit('user-online', userId);
@@ -79,6 +81,43 @@ io.on('connection', (socket) => {
       if (typeof callback === 'function') callback({ success: true, message });
     } catch (err) {
       console.error('Error saving message:', err);
+      if (typeof callback === 'function') callback({ success: false, error: 'Failed to send' });
+    }
+  });
+
+  socket.on('send-group-message', async (data, callback) => {
+    try {
+      const db = getDb();
+      const { groupId, content } = data;
+      
+      const result = await db.run(
+        'INSERT INTO group_messages (group_id, sender_id, content) VALUES (?, ?, ?)',
+        [groupId, userId, content]
+      );
+
+      const message = await db.get(
+        `SELECT gm.*, u.username as sender_username 
+         FROM group_messages gm 
+         JOIN users u ON gm.sender_id = u.id 
+         WHERE gm.id = ?`, 
+        result.lastID
+      );
+      
+      // Emit to every group member's personal room (same pattern as DM)
+      // This works regardless of when members joined — no group rooms needed
+      const members = await db.all(
+        'SELECT user_id FROM group_members WHERE group_id = ?',
+        [groupId]
+      );
+      members.forEach((m: any) => {
+        if (m.user_id !== userId) {
+          socket.to(m.user_id.toString()).emit('group-message-received', message);
+        }
+      });
+      
+      if (typeof callback === 'function') callback({ success: true, message });
+    } catch (err) {
+      console.error('Error saving group message:', err);
       if (typeof callback === 'function') callback({ success: false, error: 'Failed to send' });
     }
   });

@@ -31,6 +31,11 @@ const routes = [
     component: MainMenu
   },
   {
+    path: '/:userId/groups/:groupId',
+    name: 'GroupChatDetail',
+    component: MainMenu
+  },
+  {
     path: '/login',
     name: 'Login',
     component: LoginPage

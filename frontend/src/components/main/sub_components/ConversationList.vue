@@ -2,19 +2,22 @@
   <div class="conversation-list">
     <div 
       v-for="conv in sortedConversations" 
-      :key="conv.id"
+      :key="conv.isGroup ? 'g'+conv.id : 'u'+conv.id"
       class="conversation-item"
-      :class="{ active: conv.id === activeConversationId }"
-      @click="$emit('select', conv.id)"
+      :class="{ active: (conv.isGroup ? 'g'+conv.id : 'u'+conv.id) === activeConversationId }"
+      @click="$emit('select', conv)"
     >
       <div class="avatar-wrapper">
-        <div class="avatar">{{ conv.username[0]?.toUpperCase() }}</div>
-        <div v-if="conv.online" class="online-indicator"></div>
+        <div class="avatar" :class="{ 'group-avatar': conv.isGroup }">
+          <svg v-if="conv.isGroup" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          <span v-else>{{ (conv.name || conv.username)[0]?.toUpperCase() }}</span>
+        </div>
+        <div v-if="conv.online && !conv.isGroup" class="online-indicator"></div>
       </div>
       
       <div class="conv-details">
         <div class="conv-header">
-          <span class="username">{{ conv.username }}</span>
+          <span class="username">{{ conv.name || conv.username }}</span>
           <span class="timestamp" v-if="conv.lastMessage">
             {{ formatTime(conv.lastMessage.created_at) }}
           </span>
@@ -41,7 +44,7 @@ import { computed } from 'vue';
 
 const props = defineProps<{
   conversations: any[];
-  activeConversationId?: number;
+  activeConversationId?: string;
 }>();
 
 defineEmits(['select']);
@@ -122,6 +125,18 @@ const truncate = (text: string) => {
 
 .active .avatar {
   background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+  color: white;
+  border: none;
+}
+
+.avatar.group-avatar {
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #10b981;
+}
+
+.active .avatar.group-avatar {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
   border: none;
 }
@@ -219,6 +234,31 @@ const truncate = (text: string) => {
 
   .message-text {
     font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .conversation-item {
+    padding: 8px 12px;
+    gap: 10px;
+  }
+
+  .avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 0.95rem;
+  }
+
+  .username {
+    font-size: 0.9rem;
+  }
+
+  .timestamp {
+    font-size: 0.7rem;
+  }
+
+  .message-text {
+    font-size: 0.8rem;
   }
 }
 </style>

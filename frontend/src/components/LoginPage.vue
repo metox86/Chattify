@@ -121,6 +121,21 @@ const handleLogin = async () => {
     padding: 28px 20px;
     border-radius: 16px;
   }
+
+  .card-header h2 {
+    font-size: 1.6rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .glass-card {
+    padding: 20px 14px;
+    border-radius: 12px;
+  }
+
+  .card-header h2 {
+    font-size: 1.4rem;
+  }
 }
 
 /* Optional glow behind card */
