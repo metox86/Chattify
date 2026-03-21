@@ -1,0 +1,16 @@
+# Bağımlılıklar (Her klasördeki node_modules)
+**/node_modules/
+
+# Gizli Değişkenler (Her klasördeki .env dosyaları)
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Veritabanı Dosyaları (Her klasördeki .db dosyaları)
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# İşletim Sistemi Dosyaları (Senin Mac/Windows geçişlerin için)
+.DS_Store
+Thumbs.db
