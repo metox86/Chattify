@@ -9,6 +9,7 @@ import jwt from 'jsonwebtoken';
 import authRoutes from './auth';
 import createChatRouter from './chat';
 import { initDb, getDb } from './db';
+import { ExpressPeerServer } from 'peer';
 
 dotenv.config();
 
@@ -30,6 +31,11 @@ app.use(cookieParser());
 // Routes
 app.use('/', authRoutes);
 app.use('/api/chat', createChatRouter(io));
+
+const peerServer = ExpressPeerServer(httpServer, {
+  path: '/'
+});
+app.use('/api/peer', peerServer);
 
 // Socket.io Auth
 io.use((socket, next) => {
@@ -132,6 +138,85 @@ io.on('connection', async (socket) => {
 
   socket.on('friend-accepted', (data) => {
     socket.to(data.receiverId.toString()).emit('friend-accepted', { senderId: userId });
+  });
+
+  // Call Signaling
+  socket.on('call-user', (data) => {
+    socket.to(data.receiverId.toString()).emit('incoming-call', {
+      callerId: userId,
+      callerUsername: (socket as any).username,
+      peerId: data.peerId,
+      isGroup: false,
+      timestamp: Date.now()
+    });
+  });
+
+  socket.on('call-answered', (data) => {
+    socket.to(data.callerId.toString()).emit('call-answered', {
+      answererId: userId,
+      peerId: data.peerId
+    });
+  });
+
+  socket.on('call-rejected', (data) => {
+    socket.to(data.callerId.toString()).emit('call-rejected', {
+      rejecterId: userId
+    });
+  });
+
+  socket.on('end-call', (data) => {
+    if (data.receiverId) {
+      socket.to(data.receiverId.toString()).emit('call-ended', { userId });
+    }
+  });
+
+  socket.on('start-group-call', async (data) => {
+    const { groupId, peerId } = data;
+    try {
+      const db = getDb();
+      const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ?', [groupId]);
+      const memberIds = members.map((m: any) => m.user_id);
+      members.forEach((m: any) => {
+        if (m.user_id !== userId) {
+          socket.to(m.user_id.toString()).emit('incoming-group-call', {
+            groupId,
+            callerId: userId,
+            callerUsername: (socket as any).username,
+            peerId,
+            memberIds,
+            timestamp: Date.now()
+          });
+        }
+      });
+    } catch (err) {
+      console.error('Error starting group call:', err);
+    }
+  });
+
+  socket.on('join-group-call', (data) => {
+    const { groupId, peerId, memberIds } = data;
+    memberIds.forEach((mId: any) => {
+      if (mId !== userId) {
+        socket.to(mId.toString()).emit('group-call-joined', {
+          groupId,
+          newMemberId: userId,
+          peerId,
+          username: (socket as any).username
+        });
+      }
+    });
+  });
+
+  socket.on('leave-group-call', (data) => {
+    const { groupId, memberIds } = data;
+    memberIds.forEach((mId: any) => {
+      if (mId !== userId) {
+        socket.to(mId.toString()).emit('group-call-left', {
+          groupId,
+          userId
+        });
+      }
+    });
   });
 
   socket.on('disconnect', () => {

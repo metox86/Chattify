@@ -74,6 +74,8 @@
       @close="showGroupModal = false"
       @group-created="onGroupCreated"
     />
+
+    <VoiceCallModal />
   </div>
 </template>
 
@@ -86,6 +88,8 @@ import ChatWindow from './sub_components/ChatWindow.vue';
 import GroupChatWindow from './sub_components/GroupChatWindow.vue';
 import UserSearch from './sub_components/UserSearch.vue';
 import CreateGroupModal from './sub_components/CreateGroupModal.vue';
+import VoiceCallModal from './sub_components/VoiceCallModal.vue';
+import { initPeerService } from '../../services/peerService';
 
 const router = useRouter();
 const route = useRoute();
@@ -148,6 +152,7 @@ onUnmounted(() => {
 
 const initSocket = () => {
   socket.value = io('http://localhost:3000', { withCredentials: true });
+  initPeerService(currentUserId.value!, socket.value);
   
   socket.value.on('message-received', (msg: any) => {
     const conv = conversations.value.find(c => c.id === msg.sender_id);
