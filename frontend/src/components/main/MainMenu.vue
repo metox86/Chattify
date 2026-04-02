@@ -76,6 +76,7 @@
     />
 
     <VoiceCallModal />
+    <VideoCallModal />
   </div>
 </template>
 
@@ -89,6 +90,7 @@ import GroupChatWindow from './sub_components/GroupChatWindow.vue';
 import UserSearch from './sub_components/UserSearch.vue';
 import CreateGroupModal from './sub_components/CreateGroupModal.vue';
 import VoiceCallModal from './sub_components/VoiceCallModal.vue';
+import VideoCallModal from './sub_components/VideoCallModal.vue';
 import { initPeerService } from '../../services/peerService';
 
 const router = useRouter();

@@ -198,6 +198,7 @@ io.on('connection', async (socket) => {
       callerId: userId,
       callerUsername: (socket as any).username,
       peerId: data.peerId,
+      callType: data.callType === 'video' ? 'video' : 'audio',
       isGroup: false,
       timestamp: Date.now()
     });
@@ -206,7 +207,8 @@ io.on('connection', async (socket) => {
   socket.on('call-answered', (data) => {
     socket.to(data.callerId.toString()).emit('call-answered', {
       answererId: userId,
-      peerId: data.peerId
+      peerId: data.peerId,
+      callType: data.callType === 'video' ? 'video' : 'audio',
     });
   });
 
@@ -222,12 +224,14 @@ io.on('connection', async (socket) => {
     }
   });
 
-  socket.on('start-group-call', async (data) => {
+  socket.on('start-group-call', async (data, callback) => {
     const { groupId, peerId } = data;
     try {
       const db = getDb();
       const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ?', [groupId]);
       const memberIds = members.map((m: any) => m.user_id);
+      // Let the starter know the memberIds (so frontend can enforce limits and leave-call fanout).
+      if (typeof callback === 'function') callback({ memberIds });
       members.forEach((m: any) => {
         if (m.user_id !== userId) {
           socket.to(m.user_id.toString()).emit('incoming-group-call', {
@@ -236,12 +240,14 @@ io.on('connection', async (socket) => {
             callerUsername: (socket as any).username,
             peerId,
             memberIds,
+            callType: data.callType === 'video' ? 'video' : 'audio',
             timestamp: Date.now()
           });
         }
       });
     } catch (err) {
       console.error('Error starting group call:', err);
+      if (typeof callback === 'function') callback({ memberIds: [] });
     }
   });
 

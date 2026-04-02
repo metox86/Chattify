@@ -34,7 +34,7 @@
 import { computed } from 'vue';
 import { callState, answerCall, rejectCall, endCall } from '../../../services/peerService';
 
-const isVisible = computed(() => callState.isActive || callState.isReceiving || callState.isCalling);
+const isVisible = computed(() => callState.callType === 'audio' && (callState.isActive || callState.isReceiving || callState.isCalling));
 const isReceiving = computed(() => callState.isReceiving);
 const isCalling = computed(() => callState.isCalling);
 const isActive = computed(() => callState.isActive);
