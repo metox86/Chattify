@@ -8,6 +8,7 @@ import { parse as parseCookie } from 'cookie';
 import jwt from 'jsonwebtoken';
 import authRoutes from './auth';
 import createChatRouter from './chat';
+import filesRouter from './files';
 import { initDb, getDb } from './db';
 import { ExpressPeerServer } from 'peer';
 
@@ -31,6 +32,7 @@ app.use(cookieParser());
 // Routes
 app.use('/', authRoutes);
 app.use('/api/chat', createChatRouter(io));
+app.use('/api/files', filesRouter);
 
 const peerServer = ExpressPeerServer(httpServer, {
   path: '/'
@@ -71,7 +73,11 @@ io.on('connection', async (socket) => {
   socket.on('send-message', async (data, callback) => {
     try {
       const db = getDb();
-      const { receiverId, content } = data;
+      const { receiverId, content, attachments } = data as {
+        receiverId: number;
+        content: string;
+        attachments?: number[];
+      };
       
       const result = await db.run(
         'INSERT INTO messages (sender_id, receiver_id, content) VALUES (?, ?, ?)',
@@ -79,12 +85,33 @@ io.on('connection', async (socket) => {
       );
 
       const message = await db.get('SELECT * FROM messages WHERE id = ?', result.lastID);
+
+      let attachmentRecords: any[] = [];
+      if (Array.isArray(attachments) && attachments.length > 0) {
+        // Only allow attaching files that the sender owns
+        const placeholders = attachments.map(() => '?').join(',');
+        const rows = await db.all(
+          `SELECT id, original_name, mime_type, size_bytes
+           FROM files
+           WHERE owner_id = ? AND id IN (${placeholders})`,
+          [userId, ...attachments]
+        );
+        attachmentRecords = rows || [];
+
+        for (const row of attachmentRecords) {
+          await db.run('INSERT OR IGNORE INTO message_files (message_id, file_id) VALUES (?, ?)', [
+            message.id,
+            row.id,
+          ]);
+        }
+      }
       
       // Emit to receiver
-      socket.to(receiverId.toString()).emit('message-received', message);
+      const messageWithAttachments = { ...message, attachments: attachmentRecords };
+      socket.to(receiverId.toString()).emit('message-received', messageWithAttachments);
       
       // Callback to sender with the saved message (including timestamp and ID)
-      if (typeof callback === 'function') callback({ success: true, message });
+      if (typeof callback === 'function') callback({ success: true, message: messageWithAttachments });
     } catch (err) {
       console.error('Error saving message:', err);
       if (typeof callback === 'function') callback({ success: false, error: 'Failed to send' });
@@ -94,7 +121,11 @@ io.on('connection', async (socket) => {
   socket.on('send-group-message', async (data, callback) => {
     try {
       const db = getDb();
-      const { groupId, content } = data;
+      const { groupId, content, attachments } = data as {
+        groupId: number;
+        content: string;
+        attachments?: number[];
+      };
       
       const result = await db.run(
         'INSERT INTO group_messages (group_id, sender_id, content) VALUES (?, ?, ?)',
@@ -108,6 +139,27 @@ io.on('connection', async (socket) => {
          WHERE gm.id = ?`, 
         result.lastID
       );
+
+      let attachmentRecords: any[] = [];
+      if (Array.isArray(attachments) && attachments.length > 0) {
+        // Only allow attaching files that the sender owns
+        const placeholders = attachments.map(() => '?').join(',');
+        const rows = await db.all(
+          `SELECT id, original_name, mime_type, size_bytes
+           FROM files
+           WHERE owner_id = ? AND id IN (${placeholders})`,
+          [userId, ...attachments]
+        );
+        attachmentRecords = rows || [];
+
+        for (const row of attachmentRecords) {
+          await db.run(
+            'INSERT OR IGNORE INTO group_message_files (group_message_id, file_id) VALUES (?, ?)',
+            [message.id, row.id]
+          );
+        }
+      }
+      const messageWithAttachments = { ...message, attachments: attachmentRecords };
       
       // Emit to every group member's personal room (same pattern as DM)
       // This works regardless of when members joined — no group rooms needed
@@ -117,11 +169,11 @@ io.on('connection', async (socket) => {
       );
       members.forEach((m: any) => {
         if (m.user_id !== userId) {
-          socket.to(m.user_id.toString()).emit('group-message-received', message);
+          socket.to(m.user_id.toString()).emit('group-message-received', messageWithAttachments);
         }
       });
       
-      if (typeof callback === 'function') callback({ success: true, message });
+      if (typeof callback === 'function') callback({ success: true, message: messageWithAttachments });
     } catch (err) {
       console.error('Error saving group message:', err);
       if (typeof callback === 'function') callback({ success: false, error: 'Failed to send' });

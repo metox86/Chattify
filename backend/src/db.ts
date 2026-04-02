@@ -19,6 +19,18 @@ export const initDb = async () => {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_id INTEGER NOT NULL,
+        original_name TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        storage_rel_path TEXT NOT NULL,
+        file_hash TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(owner_id) REFERENCES users(id)
+      );
+
       CREATE TABLE IF NOT EXISTS messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         sender_id INTEGER NOT NULL,
@@ -28,6 +40,14 @@ export const initDb = async () => {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(sender_id) REFERENCES users(id),
         FOREIGN KEY(receiver_id) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS message_files (
+        message_id INTEGER NOT NULL,
+        file_id INTEGER NOT NULL,
+        PRIMARY KEY (message_id, file_id),
+        FOREIGN KEY(message_id) REFERENCES messages(id),
+        FOREIGN KEY(file_id) REFERENCES files(id)
       );
 
       CREATE TABLE IF NOT EXISTS friendships (
@@ -64,6 +84,14 @@ export const initDb = async () => {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(group_id) REFERENCES groups(id),
         FOREIGN KEY(sender_id) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS group_message_files (
+        group_message_id INTEGER NOT NULL,
+        file_id INTEGER NOT NULL,
+        PRIMARY KEY (group_message_id, file_id),
+        FOREIGN KEY(group_message_id) REFERENCES group_messages(id),
+        FOREIGN KEY(file_id) REFERENCES files(id)
       );
     `);
     console.log('Database initialized and users table checked.');

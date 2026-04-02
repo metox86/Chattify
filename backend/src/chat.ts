@@ -50,7 +50,40 @@ router.get('/messages/:withUserId', async (req: express.Request, res: express.Re
        ORDER BY created_at ASC`,
       [currentUserId, withUserId, withUserId, currentUserId]
     );
-    res.json(messages);
+
+    const messageIds = (messages || []).map((m: any) => m.id).filter((id: any) => typeof id === 'number');
+    if (messageIds.length === 0) {
+      res.json(messages);
+      return;
+    }
+
+    const placeholders = messageIds.map(() => '?').join(',');
+    const rows = await db.all(
+      `SELECT mf.message_id, f.id, f.original_name, f.mime_type, f.size_bytes
+       FROM message_files mf
+       JOIN files f ON f.id = mf.file_id
+       WHERE mf.message_id IN (${placeholders})
+       ORDER BY mf.message_id ASC, f.id ASC`,
+      messageIds
+    );
+
+    const attachmentsByMessageId = new Map<number, any[]>();
+    for (const r of rows || []) {
+      if (!attachmentsByMessageId.has(r.message_id)) attachmentsByMessageId.set(r.message_id, []);
+      attachmentsByMessageId.get(r.message_id)!.push({
+        id: r.id,
+        original_name: r.original_name,
+        mime_type: r.mime_type,
+        size_bytes: r.size_bytes,
+      });
+    }
+
+    const withAttachments = (messages || []).map((m: any) => ({
+      ...m,
+      attachments: attachmentsByMessageId.get(m.id) || [],
+    }));
+
+    res.json(withAttachments);
   } catch (err) {
     res.status(500).json({ error: 'Database error' });
   }
@@ -265,7 +298,40 @@ router.get('/groups/:groupId/messages', async (req: express.Request, res: expres
        ORDER BY gm.created_at ASC`,
       [groupId]
     );
-    res.json(messages);
+
+    const messageIds = (messages || []).map((m: any) => m.id).filter((id: any) => typeof id === 'number');
+    if (messageIds.length === 0) {
+      res.json(messages);
+      return;
+    }
+
+    const placeholders = messageIds.map(() => '?').join(',');
+    const rows = await db.all(
+      `SELECT gmf.group_message_id, f.id, f.original_name, f.mime_type, f.size_bytes
+       FROM group_message_files gmf
+       JOIN files f ON f.id = gmf.file_id
+       WHERE gmf.group_message_id IN (${placeholders})
+       ORDER BY gmf.group_message_id ASC, f.id ASC`,
+      messageIds
+    );
+
+    const attachmentsByMessageId = new Map<number, any[]>();
+    for (const r of rows || []) {
+      if (!attachmentsByMessageId.has(r.group_message_id)) attachmentsByMessageId.set(r.group_message_id, []);
+      attachmentsByMessageId.get(r.group_message_id)!.push({
+        id: r.id,
+        original_name: r.original_name,
+        mime_type: r.mime_type,
+        size_bytes: r.size_bytes,
+      });
+    }
+
+    const withAttachments = (messages || []).map((m: any) => ({
+      ...m,
+      attachments: attachmentsByMessageId.get(m.id) || [],
+    }));
+
+    res.json(withAttachments);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error getting group messages' });

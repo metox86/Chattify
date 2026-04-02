@@ -1,5 +1,6 @@
 <template>
   <div class="chat-window">
+    <ImageModal v-if="imageModal" :src="imageModal.src" :alt="imageModal.alt" @close="imageModal = null" @download="downloadImageOnModal(imageModal.id)" />
     <div class="chat-header">
       <div class="contact-info">
         <!-- Mobile back button -->
@@ -49,6 +50,7 @@
           :class="['message-wrapper', msg.sender_id === currentUser ? 'sent' : 'received']"
         >
           <div class="message-bubble">
+            <MessageAttachments :attachments="msg.attachments || []" @open-image="openImageModal" />
             <span class="text">{{ msg.content }}</span>
             <span class="time">{{ formatTime(msg.created_at) }}</span>
           </div>
@@ -60,17 +62,43 @@
       <div v-if="conversation.typing" class="typing-indicator">
         {{ conversation.username }} is typing...
       </div>
+      <div v-if="selectedFiles.length" class="pending-attachments">
+        <div class="pending-attachment" v-for="(it, idx) in selectedFiles" :key="it.key">
+          <img v-if="it.kind === 'image' && it.previewUrl" class="thumb" :src="it.previewUrl" :alt="it.file.name" />
+          <div v-else class="file-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+          </div>
+          <div class="pending-meta">
+            <div class="pending-name" :title="it.file.name">{{ it.file.name }}</div>
+            <div class="pending-size">{{ formatBytes(it.file.size) }}</div>
+          </div>
+          <button type="button" class="remove" title="Remove" @click="removeSelectedFile(idx)">✕</button>
+        </div>
+      </div>
       <form @submit.prevent="submitMessage" class="input-form">
-        <button type="button" class="attach-btn" :disabled="friendshipStatus !== 'accepted'" title="Attach File">
+        <button
+          type="button"
+          class="attach-btn"
+          :disabled="friendshipStatus !== 'accepted'"
+          title="Attach File"
+          @click="openFilePicker"
+        >
           <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
         </button>
+        <input
+          ref="fileInput"
+          type="file"
+          multiple
+          class="hidden-file-input"
+          @change="onFilesSelected"
+        />
         <input 
           type="text" 
           v-model="newMessage" 
           placeholder="Type a message..." 
           @input="onInput"
         />
-        <button type="submit" class="send-btn" :disabled="!newMessage.trim()">
+        <button type="submit" class="send-btn" :disabled="!canSend">
           <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" class="send-icon"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
         </button>
       </form>
@@ -79,8 +107,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted } from 'vue';
+import { computed, onBeforeUnmount, ref, watch, nextTick, onMounted } from 'vue';
 import { startCall } from '../../../services/peerService';
+import MessageAttachments from './MessageAttachments.vue';
+import ImageModal from './ImageModal.vue';
 
 const props = defineProps<{
   conversation: any;
@@ -96,11 +126,37 @@ const messagesContainer = ref<HTMLElement | null>(null);
 const friendshipStatus = ref<string>('none');
 let typingTimeout: ReturnType<typeof setTimeout> | null = null;
 
+const fileInput = ref<HTMLInputElement | null>(null);
+const uploading = ref<boolean>(false);
+
+type SelectedFileKind = 'image' | 'audio' | 'video' | 'other';
+type SelectedFile = {
+  key: string;
+  file: File;
+  kind: SelectedFileKind;
+  previewUrl?: string;
+};
+
+const selectedFiles = ref<SelectedFile[]>([]);
+const imageModal = ref<{ id: number, src: string; alt?: string } | null>(null);
+
+const canSend = computed(() => {
+  return !!newMessage.value.trim() || selectedFiles.value.length > 0;
+});
+
 const scrollToBottom = async () => {
   await nextTick();
   if (messagesContainer.value) {
     messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
   }
+};
+
+const openImageModal = (payload: { id: number; original_name: string }) => {
+  imageModal.value = {
+    id: payload.id,
+    src: `http://localhost:3000/api/files/${payload.id}`,
+    alt: payload.original_name,
+  };
 };
 
 const fetchFriendship = async () => {
@@ -172,11 +228,112 @@ const onInput = () => {
   }, 2000);
 };
 
-const submitMessage = () => {
-  if (!newMessage.value.trim()) return;
-  emit('send-message', newMessage.value.trim());
-  newMessage.value = '';
+const openFilePicker = () => {
+  if (friendshipStatus.value !== 'accepted') return;
+  fileInput.value?.click();
 };
+
+const inferKind = (f: File): SelectedFileKind => {
+  const t = f.type || '';
+  if (t.startsWith('image/')) return 'image';
+  if (t.startsWith('audio/')) return 'audio';
+  if (t.startsWith('video/')) return 'video';
+  return 'other';
+};
+
+const onFilesSelected = (e: Event) => {
+  const input = e.target as HTMLInputElement;
+  const files = input.files ? Array.from(input.files) : [];
+  if (files.length === 0) return;
+
+  for (const f of files) {
+    const kind = inferKind(f);
+    const previewUrl = kind === 'image' ? URL.createObjectURL(f) : undefined;
+    selectedFiles.value.push({
+      key: crypto.randomUUID(),
+      file: f,
+      kind,
+      previewUrl,
+    });
+  }
+
+  // Allow selecting the same file again
+  input.value = '';
+};
+
+const removeSelectedFile = (idx: number) => {
+  const it = selectedFiles.value[idx];
+  if (it?.previewUrl) URL.revokeObjectURL(it.previewUrl);
+  selectedFiles.value.splice(idx, 1);
+};
+
+const uploadSelectedFiles = async (): Promise<number[]> => {
+  const ids: number[] = [];
+  uploading.value = true;
+  try {
+    for (const it of selectedFiles.value) {
+      const fd = new FormData();
+      fd.append('file', it.file);
+      const res = await fetch('http://localhost:3000/api/files/upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: fd,
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      ids.push(data.fileId);
+    }
+  } finally {
+    uploading.value = false;
+  }
+  return ids;
+};
+
+const formatBytes = (bytes: number) => {
+  if (!bytes || bytes < 0) return '';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let v = bytes;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  const digits = i === 0 ? 0 : i === 1 ? 0 : 1;
+  return `${v.toFixed(digits)} ${units[i]}`;
+};
+
+onBeforeUnmount(() => {
+  for (const it of selectedFiles.value) {
+    if (it.previewUrl) URL.revokeObjectURL(it.previewUrl);
+  }
+});
+
+const submitMessage = async () => {
+  if (!canSend.value) return;
+  const attachmentIds = selectedFiles.value.length ? await uploadSelectedFiles() : [];
+  emit('send-message', {
+    content: newMessage.value.trim(),
+    attachments: attachmentIds,
+  });
+  newMessage.value = '';
+  for (const it of selectedFiles.value) {
+    if (it.previewUrl) URL.revokeObjectURL(it.previewUrl);
+  }
+  selectedFiles.value = [];
+};
+
+const downloadImageOnModal = (id: number) => {
+  const fileUrl = (id: number) => `http://localhost:3000/api/files/${id}`;
+  const downloadUrl = (id: number) => `http://localhost:3000/api/files/${id}/download`;
+
+  const link = document.createElement("a");
+  link.href = downloadUrl(id);
+  link.download = fileUrl(id);
+
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
 </script>
 
 <style scoped>
@@ -390,6 +547,7 @@ const submitMessage = () => {
   font-size: 0.95rem;
   line-height: 1.4;
   word-wrap: break-word;
+  margin-top: 6px;
 }
 
 .time {
@@ -465,6 +623,82 @@ input:focus {
 .send-icon {
   margin-right: 2px;
   margin-top: 2px;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.pending-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 2px 0;
+  margin-bottom: 10px;
+}
+
+.pending-attachment {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  max-width: 100%;
+}
+
+.thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.file-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.pending-meta {
+  min-width: 0;
+}
+
+.pending-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.pending-size {
+  font-size: 0.72rem;
+  opacity: 0.75;
+  margin-top: 2px;
+}
+
+.remove {
+  background: transparent;
+  border: none;
+  color: inherit;
+  opacity: 0.85;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 8px;
+}
+
+.remove:hover {
+  background: rgba(255, 255, 255, 0.08);
+  opacity: 1;
 }
 
 /* ── Back button (mobile) ─────────── */

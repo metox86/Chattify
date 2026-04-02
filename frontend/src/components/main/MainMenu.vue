@@ -209,13 +209,15 @@ const initSocket = () => {
   });
 
   socket.value.on('friend-request', ({senderId}: any) => {
-    if (activeConversationId.value === senderId) {
+    const active = activeConversationId.value;
+    if (active && active.startsWith('u') && parseInt(active.substring(1), 10) === senderId) {
       refreshFriendshipTrigger.value++;
     }
   });
 
   socket.value.on('friend-accepted', ({senderId}: any) => {
-    if (activeConversationId.value === senderId) {
+    const active = activeConversationId.value;
+    if (active && active.startsWith('u') && parseInt(active.substring(1), 10) === senderId) {
       refreshFriendshipTrigger.value++;
     }
   });
@@ -327,10 +329,12 @@ const onGroupCreated = (group: any) => {
   selectConversation({ id: group.id, isGroup: true });
 };
 
-const sendMessage = (content: string) => {
+const sendMessage = (payload: any) => {
   if (!socket.value || !activeConversationId.value || !activeConversation.value) return;
   const receiverId = parseInt(activeConversationId.value.substring(1), 10);
-  socket.value.emit('send-message', { receiverId, content }, (res: any) => {
+  const content = typeof payload === 'string' ? payload : (payload?.content ?? '');
+  const attachments = Array.isArray(payload?.attachments) ? payload.attachments : [];
+  socket.value.emit('send-message', { receiverId, content, attachments }, (res: any) => {
     if (res.success) {
       const conv = activeConversation.value;
       if (!conv.messages) conv.messages = [];
@@ -340,10 +344,12 @@ const sendMessage = (content: string) => {
   });
 };
 
-const sendGroupMessage = (content: string) => {
+const sendGroupMessage = (payload: any) => {
   if (!socket.value || !activeConversationId.value || !activeGroup.value) return;
   const groupId = parseInt(activeConversationId.value.substring(1), 10);
-  socket.value.emit('send-group-message', { groupId, content }, (res: any) => {
+  const content = typeof payload === 'string' ? payload : (payload?.content ?? '');
+  const attachments = Array.isArray(payload?.attachments) ? payload.attachments : [];
+  socket.value.emit('send-group-message', { groupId, content, attachments }, (res: any) => {
     if (res.success) {
       const idx = groups.value.findIndex(g => g.id === groupId);
       if (idx !== -1) {
