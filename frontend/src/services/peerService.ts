@@ -117,13 +117,13 @@ export const initPeerService = (userId: number, socketInstance: any) => {
 
   // Wait for a small delay to ensure backend peer server is ready? Nah, should be fine.
   peer = new Peer(userId.toString(), {
-    host: window.location.hostname, // 'locate-highs-color-bird.trycloudflare.com'
+    host: window.location.hostname, 
     path: '/api/peer',
-    secure: true,        // ŞART!
-    port: 443,           // HTTPS tüneli üzerinden bağlandığın için 443 olmalı
-    debug: 3,            // Hatayı detaylı görmek için ekle
+    secure: true,        
+    port: 443,           
+    debug: 3,            
     config: {
-      iceServers: parseIceServersFromEnv(), // Buranın boş veya hatalı olmadığından emin ol
+      iceServers: parseIceServersFromEnv(),
     },
   });
 
@@ -224,14 +224,22 @@ export const initPeerService = (userId: number, socketInstance: any) => {
   });
 
   socket.on('group-call-left', (data: any) => {
-    if (callState.isActive && callState.groupId === data.groupId) {
-       const peerId = data.userId.toString();
-       if (activeConnections.has(peerId)) {
-         activeConnections.get(peerId)?.close();
-         activeConnections.delete(peerId);
-       }
-       callState.remoteStreams.delete(peerId);
+   if (callState.isActive && callState.groupId === data.groupId) {
+    const peerId = data.userId.toString();
+    if (activeConnections.has(peerId)) {
+      activeConnections.get(peerId)?.close();
+      activeConnections.delete(peerId);
     }
+    callState.remoteStreams.delete(peerId);
+
+    if (callState.remoteStreams.size === 0) {
+      resetCallState();
+    }
+  } 
+  else if (callState.isReceiving && callState.groupId === data.groupId) {
+    // Arayan kişi (starter) aramayı iptal ederse modalı kapat
+    resetCallState();
+  }
   });
 };
 
@@ -244,6 +252,7 @@ export const startCall = async (receiverId: number) => {
     callState.isMicEnabled = init.isMicEnabled;
     callState.isCameraEnabled = init.isCameraEnabled;
     applyTrackStates(stream, init);
+    callState.callerId = receiverId;
     callState.isCalling = true;
     callState.callerName = 'Calling...'; 
     callState.isGroup = false;
@@ -264,6 +273,7 @@ export const startVideoCall = async (receiverId: number) => {
     callState.isMicEnabled = init.isMicEnabled;
     callState.isCameraEnabled = init.isCameraEnabled;
     applyTrackStates(stream, init);
+    callState.callerId = receiverId;
     callState.isCalling = true;
     callState.callerName = 'Calling...';
     callState.isGroup = false;
@@ -394,9 +404,10 @@ export const endCall = () => {
     socket.emit('leave-group-call', { groupId: callState.groupId, memberIds: callState.memberIds });
   } else {
     // End 1-on-1 call
-    socket.emit('end-call', { 
-      receiverId: callState.callerId
-    });
+    const targetId = callState.callerId; 
+    if (targetId) {
+      socket.emit('end-call', { receiverId: targetId });
+    }
   }
 
   // Broadly terminate

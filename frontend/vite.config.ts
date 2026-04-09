@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [vue()],
   server: {
     host: "0.0.0.0",
-    allowedHosts: ["life-compaq-tagged-released.trycloudflare.com"],
+    allowedHosts: ["intro-fleet-saving-acer.trycloudflare.com"],
     proxy: {
       '/api/peer': {
         target: 'http://127.0.0.1:3000',
