@@ -131,7 +131,7 @@ const scrollToBottom = async () => {
 
 const openImageModal = (payload: { id: number; original_name: string }) => {
   imageModal.value = {
-    src: `http://localhost:3000/api/files/${payload.id}`,
+    src: `/api/v1/files/${payload.id}`,
     alt: payload.original_name,
   };
 };
@@ -202,7 +202,7 @@ const uploadSelectedFiles = async (): Promise<number[]> => {
     for (const it of selectedFiles.value) {
       const fd = new FormData();
       fd.append('file', it.file);
-      const res = await fetch('http://localhost:3000/api/files/upload', {
+      const res = await fetch('/api/v1/files/upload', {
         method: 'POST',
         credentials: 'include',
         body: fd,

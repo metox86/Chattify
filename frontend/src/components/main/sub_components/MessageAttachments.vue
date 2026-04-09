@@ -41,8 +41,8 @@ const emit = defineEmits<{
   (e: 'open-image', payload: { id: number; original_name: string }): void;
 }>();
 
-const fileUrl = (id: number) => `http://localhost:3000/api/files/${id}`;
-const downloadUrl = (id: number) => `http://localhost:3000/api/files/${id}/download`;
+const fileUrl = (id: number) => `/api/v1/files/${id}`;
+const downloadUrl = (id: number) => `/api/v1/files/${id}/download`;
 
 const isImage = (mime: string) => mime?.startsWith('image/');
 const isAudio = (mime: string) => mime?.startsWith('audio/');

@@ -154,14 +154,14 @@ const scrollToBottom = async () => {
 const openImageModal = (payload: { id: number; original_name: string }) => {
   imageModal.value = {
     id: payload.id,
-    src: `http://localhost:3000/api/files/${payload.id}`,
+    src: `/api/v1/files/${payload.id}`,
     alt: payload.original_name,
   };
 };
 
 const fetchFriendship = async () => {
   if (!props.conversation.id) return;
-  const res = await fetch(`http://localhost:3000/api/chat/friendship/${props.conversation.id}`, { credentials: 'include' });
+  const res = await fetch(`/api/v1/chat/friendship/${props.conversation.id}`, { credentials: 'include' });
   if (res.ok) {
     const data = await res.json();
     friendshipStatus.value = data.status;
@@ -186,7 +186,7 @@ onMounted(() => {
 });
 
 const sendFriendRequest = async () => {
-  const res = await fetch('http://localhost:3000/api/chat/friend-request', {
+  const res = await fetch('/api/v1/chat/friend-request', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -199,7 +199,7 @@ const sendFriendRequest = async () => {
 };
 
 const acceptFriendRequest = async () => {
-  const res = await fetch('http://localhost:3000/api/chat/friend-accept', {
+  const res = await fetch('/api/v1/chat/friend-accept', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -274,7 +274,7 @@ const uploadSelectedFiles = async (): Promise<number[]> => {
     for (const it of selectedFiles.value) {
       const fd = new FormData();
       fd.append('file', it.file);
-      const res = await fetch('http://localhost:3000/api/files/upload', {
+      const res = await fetch('/api/v1/files/upload', {
         method: 'POST',
         credentials: 'include',
         body: fd,
@@ -323,8 +323,8 @@ const submitMessage = async () => {
 };
 
 const downloadImageOnModal = (id: number) => {
-  const fileUrl = (id: number) => `http://localhost:3000/api/files/${id}`;
-  const downloadUrl = (id: number) => `http://localhost:3000/api/files/${id}/download`;
+  const fileUrl = (id: number) => `/api/v1/files/${id}`;
+  const downloadUrl = (id: number) => `/api/v1/files/${id}/download`;
 
   const link = document.createElement("a");
   link.href = downloadUrl(id);

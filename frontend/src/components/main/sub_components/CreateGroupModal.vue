@@ -84,7 +84,7 @@ const performSearch = () => {
     try {
       // NOTE: We just search from /users (which restricts correctly in backend)
       // If we only want accepted friends, we'd need another endpoint, but searching all users is fine for now
-      const res = await fetch(`http://localhost:3000/api/chat/users?search=${encodeURIComponent(searchQuery.value)}`, {
+      const res = await fetch(`/api/v1/chat/users?search=${encodeURIComponent(searchQuery.value)}`, {
         credentials: 'include'
       });
       if (res.ok) {
@@ -114,7 +114,7 @@ const createGroup = async () => {
   if (!groupName.value.trim()) return;
   
   try {
-    const res = await fetch('http://localhost:3000/api/chat/groups', {
+    const res = await fetch('/api/v1/chat/groups', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',

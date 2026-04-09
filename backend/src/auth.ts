@@ -92,7 +92,8 @@ router.post('/login', async (req: express.Request, res: express.Response): Promi
     res.cookie('chat_token', token, {
       httpOnly: true,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      sameSite: 'lax'
+      sameSite: 'none',
+      secure: true
     });
 
     res.json({ message: 'Login successful', username: user.username, userId: user.id });

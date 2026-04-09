@@ -117,11 +117,13 @@ export const initPeerService = (userId: number, socketInstance: any) => {
 
   // Wait for a small delay to ensure backend peer server is ready? Nah, should be fine.
   peer = new Peer(userId.toString(), {
-    host: window.location.hostname,
-    port: 3000,
+    host: window.location.hostname, // 'locate-highs-color-bird.trycloudflare.com'
     path: '/api/peer',
+    secure: true,        // ŞART!
+    port: 443,           // HTTPS tüneli üzerinden bağlandığın için 443 olmalı
+    debug: 3,            // Hatayı detaylı görmek için ekle
     config: {
-      iceServers: parseIceServersFromEnv(),
+      iceServers: parseIceServersFromEnv(), // Buranın boş veya hatalı olmadığından emin ol
     },
   });
 

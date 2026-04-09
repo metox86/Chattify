@@ -56,7 +56,7 @@ const handleLogin = async () => {
   isLoading.value = true;
   
   try {
-    const response = await fetch('http://localhost:3000/login', {
+    const response = await fetch('/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',

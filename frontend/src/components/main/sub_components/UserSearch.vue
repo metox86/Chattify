@@ -68,7 +68,7 @@ const performSearch = () => {
   debounceTimeout = setTimeout(async () => {
     isLoading.value = true;
     try {
-      const res = await fetch(`http://localhost:3000/api/chat/users?search=${encodeURIComponent(searchQuery.value)}`, {
+      const res = await fetch(`/api/v1/chat/users?search=${encodeURIComponent(searchQuery.value)}`, {
         credentials: 'include'
       });
       if (res.ok) {

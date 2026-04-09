@@ -22,7 +22,8 @@ const io = new Server(httpServer, {
     credentials: true,
   }
 });
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
+const HOST = "0.0.0.0";
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-in-prod';
 
 app.use(cors({ origin: true, credentials: true }));
@@ -30,12 +31,13 @@ app.use(express.json());
 app.use(cookieParser());
 
 // Routes
-app.use('/', authRoutes);
-app.use('/api/chat', createChatRouter(io));
-app.use('/api/files', filesRouter);
+app.use('/auth', authRoutes);
+app.use('/api/v1/chat', createChatRouter(io));
+app.use('/api/v1/files', filesRouter);
 
 const peerServer = ExpressPeerServer(httpServer, {
-  path: '/'
+  path: '/',
+  proxied: true
 });
 app.use('/api/peer', peerServer);
 
@@ -287,8 +289,8 @@ io.on('connection', async (socket) => {
 const startServer = async () => {
   try {
     await initDb();
-    httpServer.listen(PORT, () => {
-      console.log(`Server is running on http://localhost:${PORT}`);
+    httpServer.listen(PORT, HOST, () => {
+      console.log(`Server is running on http://${HOST}:${PORT}`);
     });
   } catch (err) {
     console.error('Failed to start server:', err);

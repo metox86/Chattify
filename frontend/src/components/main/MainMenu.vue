@@ -127,7 +127,7 @@ const activeGroup = computed(() => {
 
 onMounted(async () => {
   try {
-    const res = await fetch('http://localhost:3000/me', { credentials: 'include' });
+    const res = await fetch('/auth/me', { credentials: 'include' });
     if (!res.ok) throw new Error('Not auth');
     const data = await res.json();
     currentUser.value = data.username;
@@ -142,6 +142,7 @@ onMounted(async () => {
       loadConversation('g' + route.params.groupId);
     }
   } catch(e: any) {
+    console.log(e);
     localStorage.removeItem('chat_user');
     router.push('/login');
   }
@@ -153,7 +154,7 @@ onUnmounted(() => {
 });
 
 const initSocket = () => {
-  socket.value = io('http://localhost:3000', { withCredentials: true });
+  socket.value = io({ withCredentials: true });
   initPeerService(currentUserId.value!, socket.value);
   
   socket.value.on('message-received', (msg: any) => {
@@ -226,21 +227,21 @@ const initSocket = () => {
 };
 
 const fetchConversations = async () => {
-  const res = await fetch('http://localhost:3000/api/chat/conversations', { credentials: 'include' });
+  const res = await fetch('/api/v1/chat/conversations', { credentials: 'include' });
   if (res.ok) {
     conversations.value = await res.json();
   }
 };
 
 const fetchGroups = async () => {
-  const res = await fetch('http://localhost:3000/api/chat/groups', { credentials: 'include' });
+  const res = await fetch('/api/v1/chat/groups', { credentials: 'include' });
   if (res.ok) {
     groups.value = await res.json();
   }
 };
 
 const fetchMessages = async (userId: number) => {
-  const res = await fetch(`http://localhost:3000/api/chat/messages/${userId}`, { credentials: 'include' });
+  const res = await fetch(`/api/v1/chat/messages/${userId}`, { credentials: 'include' });
   if (res.ok) {
     const msgs = await res.json();
     const conv = conversations.value.find(c => c.id === userId);
@@ -251,7 +252,7 @@ const fetchMessages = async (userId: number) => {
 };
 
 const fetchGroupMessages = async (groupId: number) => {
-  const res = await fetch(`http://localhost:3000/api/chat/groups/${groupId}/messages`, { credentials: 'include' });
+  const res = await fetch(`/api/v1/chat/groups/${groupId}/messages`, { credentials: 'include' });
   if (res.ok) {
     const msgs = await res.json();
     const group = groups.value.find(g => g.id === groupId);
@@ -391,7 +392,7 @@ const onFriendAcceptSent = (targetId: number) => {
 };
 
 const handleLogout = async () => {
-  await fetch('http://localhost:3000/logout', { method: 'POST', credentials: 'include' });
+  await fetch('/logout', { method: 'POST', credentials: 'include' });
   localStorage.removeItem('chat_user');
   if (socket.value) socket.value.disconnect();
   router.push('/login');

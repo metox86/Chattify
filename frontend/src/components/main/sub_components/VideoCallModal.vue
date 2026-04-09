@@ -27,7 +27,7 @@
               class="remote-video"
               autoplay
               playsinline
-              :ref="(el) => setRemoteVideoEl(peerId, el)"
+              :ref="(el) => setRemoteVideoEl(peerId, el as Element)"
             ></video>
             <div class="peer-label">{{ peerId }}</div>
           </div>
@@ -176,20 +176,36 @@ watch(
   max-width: 520px;
 }
 
-.stage {
+/*.stage {
   flex: 1;
   position: relative;
   padding: 12px;
   background:
     radial-gradient(circle at 50% 30%, rgba(79, 172, 254, 0.12) 0%, transparent 55%),
     #060914;
+}*/
+.stage {
+  flex: 1;
+  position: relative;
+  padding: 12px;
+  background: radial-gradient(circle at 50% 30%, rgba(79, 172, 254, 0.12) 0%, transparent 55%), #060914;
+  overflow: hidden; /* Dışarı taşmaları engelle */
+  display: flex; /* İçerideki grid'in tam oturması için */
 }
 
-.remote-grid {
+/*.remote-grid {
   height: 100%;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}*/
+.remote-grid {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  z-index: 1; /* Alt katmanda kalması için */
 }
 
 .remote-grid.single {
@@ -238,7 +254,7 @@ watch(
   font-size: 0.95rem;
 }
 
-.local-preview {
+/*.local-preview {
   position: absolute;
   right: 18px;
   bottom: 18px;
@@ -249,6 +265,21 @@ watch(
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: #0b1220;
   box-shadow: 0 18px 34px rgba(0, 0, 0, 0.45);
+}*/
+.local-preview {
+  position: absolute;
+  right: 18px;
+  /* Alt taraftaki boşluğu artırarak butonlarla çakışmasını önle */
+  bottom: 20px; 
+  width: min(260px, 30vw); /* Bilgisayarda çok devasa olmasın */
+  aspect-ratio: 16/9;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: #000;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.6);
+  z-index: 10; /* Her zaman en üstte (grid ve videoların üstünde) */
+  transition: all 0.3s ease; /* Boyut değişimlerinde yumuşak geçiş */
 }
 
 .local-video {
@@ -310,6 +341,14 @@ watch(
 .pill.danger {
   background: rgba(239, 68, 68, 0.22);
   border-color: rgba(239, 68, 68, 0.35);
+}
+
+@media (min-width: 1024px) {
+  .local-preview {
+    width: 240px; /* Sabit veya daha kontrollü bir genişlik */
+    bottom: 24px;
+    right: 24px;
+  }
 }
 </style>
 
