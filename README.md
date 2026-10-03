@@ -51,7 +51,7 @@ Follow these steps to set up Chattify locally on your machine.
 
 1. **Clone the repository:**
    ```bash
-   git clone [https://github.com/metox86/chattify.git](https://github.com/metox86/chattify.git)
+   git clone https://github.com/metox86/Chattify.git
    cd Chattify
    ```
 2. **Install dependencies:**
@@ -84,4 +84,4 @@ npm run dev
 
 ## 📜 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/metox86/Chattify/blob/main/LICENSE) file for details.
